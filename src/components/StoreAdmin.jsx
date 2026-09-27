@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ImagePlus, LockKeyhole, LogOut, PackagePlus, RotateCcw, Save, Trash2, Upload } from 'lucide-react'
 import { useStore } from '../context/StoreContext'
 import { imageFileToDataUrl, optimizeImageDataUrl } from '../utils/imageUpload'
