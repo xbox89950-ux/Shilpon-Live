@@ -12,6 +12,7 @@ shilpon-storefront/
 ├── vite.config.js
 ├── README.md
 ├── .github/workflows/deploy.yml  # Builds and deploys to GitHub Pages
+├── scripts/generate-seo-pages.js # Generates product pages, metadata and sitemap
 ├── public/
 │   └── images/
 │       ├── shilpon-logo.png
@@ -42,6 +43,7 @@ shilpon-storefront/
     │   └── paymentService.js
     └── utils/
         ├── format.js
+        ├── productSeo.js
         └── whatsapp.js
 ```
 
@@ -96,7 +98,9 @@ The WhatsApp link is assembled client-side in `src/utils/whatsapp.js` and uses t
 
 ## Search visibility
 
-The page title/description and product structured data are generated for the current screen, product cards use crawlable product links, and `public/robots.txt` allows crawling. Before launch, use your final domain to create and submit a sitemap in Google Search Console, then verify ownership and inspect representative URLs. Add complete original product names, descriptions, sizes, prices, availability, and real photo URLs; remove the sample catalogue and reviews. Search indexing and ranking take time and are not guaranteed. This React app renders much of its content in JavaScript; server-rendered product pages would make product indexing more reliable. See Google Search Central's JavaScript SEO and ecommerce structured data guidance.
+`npm run build` generates a separate static HTML file for each sample product, with its own canonical URL, title, description, social preview metadata and Product/Offer structured data. Product cards link to these readable product URLs. The same build creates `dist/sitemap.xml` with the homepage and product pages, plus `dist/robots.txt`. The GitHub Pages workflow sets the live repository URL automatically. For a custom domain, set the `SITE_URL` environment variable to the full site origin with a trailing slash during the build.
+
+After deployment, verify the domain in [Google Search Console](https://search.google.com/search-console/), submit `https://YOUR-DOMAIN/sitemap.xml`, and use URL Inspection to request indexing for the homepage and product pages. Sitemap submission is only a discovery hint; indexing and ranking are not guaranteed. Replace all sample products, photos, descriptions and review claims with accurate business information before relying on search traffic. Browser-admin edits stay on that browser and do not change the public catalog or sitemap; publish changes through `src/data/products.js` and a new deployment.
 
 ## Notes before launch
 

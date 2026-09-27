@@ -1,5 +1,0 @@
-User-agent: *
-Allow: /
-
-# Replace this placeholder with the final public website domain before launch.
-Sitemap: https://YOUR-DOMAIN.example/sitemap.xml

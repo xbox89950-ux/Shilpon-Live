@@ -13,6 +13,7 @@ import { testimonials } from './data/testimonials'
 import { siteConfig } from './config/siteConfig'
 import { currentPrice, money } from './utils/format'
 import { openWhatsAppOrder } from './utils/whatsapp'
+import { productFromLocation, productPath } from './utils/productSeo'
 
 function AppContent() {
   const store = useStore()
@@ -22,7 +23,7 @@ function AppContent() {
   const [category, setCategory] = useState('all')
   const [sort, setSort] = useState('featured')
   const [cartOpen, setCartOpen] = useState(false)
-  const [selected, setSelected] = useState(() => products.find(product=>product.id===new URLSearchParams(window.location.search).get('product'))||null)
+  const [selected, setSelected] = useState(() => productFromLocation(products))
   const [checkout, setCheckout] = useState(false)
   const [success, setSuccess] = useState(null)
   const [variant, setVariant] = useState({ size: '', color: '' })
@@ -34,9 +35,8 @@ function AppContent() {
   // Keep direct product links working, including after admin edits or a page refresh.
   useEffect(() => {
     const syncProductRoute = () => {
-      const productId = new URLSearchParams(window.location.search).get('product')
-      if (!productId) return
-      const match = products.find(product => product.id === productId)
+      const match = productFromLocation(products)
+      if (!match && !window.location.pathname.includes('/products/')) return
       if (match) {
         setSelected(match)
         setVariant({ size: match.sizes?.[0] || '', color: match.colors?.[0] || '' })
@@ -50,8 +50,8 @@ function AppContent() {
     window.addEventListener('popstate', syncProductRoute)
     return () => window.removeEventListener('popstate', syncProductRoute)
   }, [products])
-  const page = (name) => { const url=new URL(window.location.href); if(name!=='product')url.searchParams.delete('product'); url.hash=name; window.history.pushState({},'',url); setHash(name); window.scrollTo({ top: 0, behavior: 'smooth' }) }
-  const syncRoute = () => { const productId=new URLSearchParams(window.location.search).get('product'); setSelected(products.find(product=>product.id===productId)||null); setHash(productId?'product':window.location.hash.replace('#','')||'home'); setCheckout(false); setSuccess(null) }
+  const page = (name) => { const url=new URL(window.location.href); if(name!=='product'){url.pathname=import.meta.env.BASE_URL;url.search=''} url.hash=name; window.history.pushState({},'',url); setHash(name); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const syncRoute = () => { const match=productFromLocation(products); setSelected(match); setHash(match?'product':window.location.hash.replace('#','')||'home'); setCheckout(false); setSuccess(null) }
   window.onhashchange = syncRoute
   window.onpopstate = syncRoute
   const filteredProducts = useMemo(() => {
@@ -63,7 +63,7 @@ function AppContent() {
     if (sort === 'new') list.sort((a,b) => Number(b.isNew)-Number(a.isNew))
     return list
   }, [category, searchTerm, sort])
-  const showProduct = product => { setSelected(product); setVariant({ size: product.sizes?.[0] || '', color: product.colors?.[0] || '' }); setQuantity(1); const url=new URL(window.location.href);url.search='';url.searchParams.set('product',product.id);url.hash='';window.history.pushState({},'',url);setHash('product');window.scrollTo({top:0,behavior:'smooth'}) }
+  const showProduct = product => { setSelected(product); setVariant({ size: product.sizes?.[0] || '', color: product.colors?.[0] || '' }); setQuantity(1); const url=new URL(productPath(product,import.meta.env.BASE_URL),window.location.origin);window.history.pushState({},'',url);setHash('product');window.scrollTo({top:0,behavior:'smooth'}) }
   const closeProduct = () => { setSelected(null); page('shop') }
   const buyNow = (product, qty=1, picked=variant) => { store.addToCart(product, qty, picked); setSelected(null); setCartOpen(true) }
   const whatsappOne = product => { try { openWhatsAppOrder({ items: [{ product, quantity, ...variant }], whatsappNumber: settings.whatsappNumber }) } catch (e) { alert(e.message) } }
@@ -82,7 +82,7 @@ function AppContent() {
   const shop = <main className="shop-page wrap" id="shop"><div className="shop-intro"><span className="eyebrow">A CONSIDERED LITTLE COLLECTION</span><h1>Good things, <em>right this way.</em></h1><p>Useful things, made with care, ready for real life.</p></div><div className="shop-toolbar"><div className="filter-chips"><button className={category==='all'?'active':''} onClick={()=>setCategory('all')}>Everything</button>{categories.map(c=><button className={category===c.id?'active':''} key={c.id} onClick={()=>setCategory(c.id)}>{c.name}{c.bn && <span className="filter-bengali"> · {c.bn}</span>}</button>)}</div><label className="sort-control"><span>Sort</span><select value={sort} onChange={e=>setSort(e.target.value)}><option value="featured">Featured</option><option value="new">Newest</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select></label></div>{searchTerm && <div className="search-results-label">Showing results for “{searchTerm}” <button onClick={()=>setSearchTerm('')}>Clear</button></div>}{filteredProducts.length ? <div className="product-grid shop-grid">{filteredProducts.map(p=><ProductCard key={p.id} product={p} onSelect={showProduct}/>)}</div> : <div className="empty-results"><span>⌕</span><h2>Nothing on this shelf yet.</h2><p>Try another search or take a look at everything.</p><button className="button button-dark" onClick={()=>{setSearchTerm('');setCategory('all')}}>Show me everything</button></div>}</main>
   const isHome = !['shop','category','checkout','order-success','product','about','faq','returns','privacy','terms','contact','shipping','manage'].includes(hash)
   const renderInfo = () => <InfoPage type={hash === 'category' ? category : hash}/>
-  const activeProduct = selected || (hash === 'product' ? products.find(product => product.id === new URLSearchParams(window.location.search).get('product')) : null)
+  const activeProduct = selected || (hash === 'product' ? productFromLocation(products) : null)
   useEffect(()=>{
     const product=activeProduct&&(hash==='product'||selected)?activeProduct:null
     const categoryPage=categories.find(item=>item.id===category)
@@ -94,12 +94,12 @@ function AppContent() {
     setMeta('meta[property="og:title"]','property',{key:'og:title',content:title})
     setMeta('meta[property="og:description"]','property',{key:'og:description',content:description})
     setMeta('meta[property="og:type"]','property',{key:'og:type',content:product?'product':'website'})
-    const canonical=new URL(window.location.pathname,window.location.origin);if(product)canonical.searchParams.set('product',product.id)
+    const canonical=product?new URL(productPath(product,import.meta.env.BASE_URL),window.location.origin):new URL(import.meta.env.BASE_URL,window.location.origin)
     const shareImage=product?.images?.find(image=>/^https?:/.test(image))||new URL(assets.logo||siteConfig.logoPath,window.location.origin).href
     setMeta('meta[property="og:image"]','property',{key:'og:image',content:shareImage})
     setMeta('meta[property="og:url"]','property',{key:'og:url',content:canonical.href})
     let canonicalLink=document.head.querySelector('link[rel="canonical"]');if(!canonicalLink){canonicalLink=document.createElement('link');canonicalLink.rel='canonical';document.head.appendChild(canonicalLink)}canonicalLink.href=canonical.href
-    const graph=[{'@type':'ClothingStore',name:siteConfig.brandName,url:window.location.origin,logo:new URL(assets.logo||siteConfig.logoPath,window.location.origin).href,telephone:settings.phone,address:{'@type':'PostalAddress',addressLocality:'Dinajpur',addressRegion:'Rangpur',addressCountry:'BD'},areaServed:'Bangladesh'}]
+    const graph=[{'@type':'ClothingStore',name:siteConfig.brandName,url:new URL(import.meta.env.BASE_URL,window.location.origin).href,logo:new URL(assets.logo||siteConfig.logoPath,window.location.origin).href,telephone:settings.phone,address:{'@type':'PostalAddress',addressLocality:'Dinajpur',addressRegion:'Rangpur',addressCountry:'BD'},areaServed:'Bangladesh'}]
     if(product)graph.push({'@type':'Product',name:product.name,description:product.description,sku:product.id,category:product.category,image:product.images.filter(image=>/^https?:/.test(image)),brand:{'@type':'Brand',name:siteConfig.brandName},offers:{'@type':'Offer',priceCurrency:'BDT',price:currentPrice(product),availability:product.stock>0?'https://schema.org/InStock':'https://schema.org/OutOfStock',url:canonical.href}})
     let schema=document.getElementById('shilpon-seo-schema');if(!schema){schema=document.createElement('script');schema.id='shilpon-seo-schema';schema.type='application/ld+json';document.head.appendChild(schema)}schema.textContent=JSON.stringify({'@context':'https://schema.org','@graph':graph})
   },[activeProduct,assets.logo,categories,category,hash,selected,settings.phone])
