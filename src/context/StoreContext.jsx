@@ -3,6 +3,8 @@ import { products as defaultProducts } from '../data/products'
 import { categories as defaultCategories } from '../data/categories'
 import { siteConfig } from '../config/siteConfig'
 import { deleteBrowserRecord, loadOrMigrateRecord, MAX_BROWSER_STORE_BYTES, requestPersistentBrowserStorage, writeBrowserRecord } from '../services/browserStorage'
+import { readCatalog, saveCollection, saveSingleton } from '../services/catalogService'
+import { supabase, supabaseReady } from '../lib/supabaseClient'
 
 const StoreContext = createContext(null)
 const defaultSettings = () => ({ whatsappNumber: siteConfig.whatsappNumber, phone: siteConfig.phone, email: siteConfig.email, address: siteConfig.address })
@@ -35,16 +37,33 @@ export function StoreProvider({ children }) {
       setSettingsState(savedSettings)
       cartRef.current = savedCart
       setCart(savedCart)
+      if (supabaseReady) readCatalog().then(catalog => {
+        if (!active || !catalog) return
+        if (catalog.products) setProductsState(catalog.products)
+        if (catalog.categories) setCategoriesState(catalog.categories)
+        if (catalog.assets) setAssetsState(catalog.assets)
+        if (catalog.settings) setSettingsState(catalog.settings)
+      }).catch(error => console.error('Could not load the shared Shilpon catalog:', error.message))
     })
-    return () => { active = false }
+    let channel
+    if (supabaseReady) channel = supabase.channel('store-catalog-live').on('postgres_changes', { event: '*', schema: 'public', table: 'store_catalog' }, () => {
+      readCatalog().then(catalog => {
+        if (!active || !catalog) return
+        if (catalog.products) setProductsState(catalog.products)
+        if (catalog.categories) setCategoriesState(catalog.categories)
+        if (catalog.assets) setAssetsState(catalog.assets)
+        if (catalog.settings) setSettingsState(catalog.settings)
+      }).catch(error => console.error('Could not refresh the shared Shilpon catalog:', error.message))
+    }).subscribe()
+    return () => { active = false; if (channel) supabase.removeChannel(channel) }
   // Hydrate legacy browser data once, then keep the editor data in IndexedDB.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const saveProducts = async next => { await writeBrowserRecord('products', next); localStorage.removeItem('shilpon-products'); setProductsState(next) }
-  const saveCategories = async next => { await writeBrowserRecord('categories', next); localStorage.removeItem('shilpon-categories'); setCategoriesState(next) }
-  const saveAsset = async (key, value) => { const next = { ...assets, [key]: value }; await writeBrowserRecord('assets', next); localStorage.removeItem('shilpon-assets'); setAssetsState(next) }
-  const saveSettings = async next => { await writeBrowserRecord('settings', next); localStorage.removeItem('shilpon-settings'); setSettingsState(next) }
+  const saveProducts = async next => { if (supabaseReady) await saveCollection('product', next); else { await writeBrowserRecord('products', next); localStorage.removeItem('shilpon-products') } setProductsState(next) }
+  const saveCategories = async next => { if (supabaseReady) await saveCollection('category', next); else { await writeBrowserRecord('categories', next); localStorage.removeItem('shilpon-categories') } setCategoriesState(next) }
+  const saveAsset = async (key, value) => { const next = { ...assets, [key]: value }; if (supabaseReady) await saveSingleton('assets', next); else { await writeBrowserRecord('assets', next); localStorage.removeItem('shilpon-assets') } setAssetsState(next) }
+  const saveSettings = async next => { if (supabaseReady) await saveSingleton('settings', next); else { await writeBrowserRecord('settings', next); localStorage.removeItem('shilpon-settings') } setSettingsState(next) }
   const resetShop = async () => {
     await Promise.all(['products', 'categories', 'assets', 'settings'].map(deleteBrowserRecord))
     ;['shilpon-products', 'shilpon-categories', 'shilpon-assets', 'shilpon-settings'].forEach(key => localStorage.removeItem(key))
@@ -72,3 +91,4 @@ export function StoreProvider({ children }) {
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }
 export const useStore = () => useContext(StoreContext)
+

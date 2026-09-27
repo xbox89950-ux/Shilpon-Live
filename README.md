@@ -1,6 +1,6 @@
 # Shilpon — editable storefront starter
 
-Shilpon is a responsive React + Vite clothing storefront starter for men, women, boys and girls. It uses sample apparel and your supplied logo with a locally drawn clothing banner. It has no live order API, payment processor, newsletter service, inventory sync or admin panel. COD checkout is explicitly a browser demo, and bKash is not active.
+Shilpon is a responsive React + Vite clothing storefront for men, women, boys and girls. Its optional Supabase connection provides shared products, categories, contact/brand settings, media storage and an owner-only admin sign-in. Orders, payment and newsletter processing remain frontend demos until separately connected to a secure backend.
 
 ## Folder structure
 
@@ -13,6 +13,7 @@ shilpon-storefront/
 ├── README.md
 ├── .github/workflows/deploy.yml  # Builds and deploys to GitHub Pages
 ├── scripts/generate-seo-pages.js # Generates product pages, metadata and sitemap
+├── supabase/schema.sql          # Tables, RLS policies and media bucket
 ├── public/
 │   └── images/
 │       ├── shilpon-logo.png
@@ -60,9 +61,18 @@ Vite prints the local development URL after startup.
 
 ## Editing the shop
 
-For a local visual editor, put `VITE_ADMIN_PIN=your-local-pin` in the ignored `.env.local` file, start the site, and open `http://localhost:5173/#manage`. The editor adds/edits/removes products, changes WhatsApp/contact details, and uploads product photos, a logo, banner, category photos or a short product video without editing code. Product photos and shop edits use IndexedDB with a 1 GiB application cap; actual browser/device quota may be lower. Photos are resized before saving; video files must be under 700 KB. The local PIN is kept out of the public repository.
+### Live admin setup (Supabase)
 
-**Important:** this visual editor saves to the current browser only. Its convenience PIN is visible in local development and is not secure authentication; edits do not publish to a hosted store or share them with customers. The production build excludes the Store Manager. A real owner-only live admin needs server-side authentication, shared product/image storage and deployment hosting; that is not included in this starter.
+The Admin tab appears at the side of the website. Until Supabase is connected, it shows setup instructions and does not accept the old browser-only PIN.
+
+1. Create a Supabase project at [supabase.com](https://supabase.com) and keep its database password private.
+2. Open **SQL Editor**, paste all of `supabase/schema.sql`, and run it. This creates the shared catalog, owner allowlist, row-level security policies and public-read/private-write media bucket.
+3. In **Authentication → Users**, create the owner account and set a new password privately there. Do not reuse a password shared in chat.
+4. In **SQL Editor**, replace `YOUR_ADMIN_EMAIL` in the final example query in `supabase/schema.sql` with the owner email and run it. This allowlists only that user for catalog and media writes.
+5. In **Project Settings → API**, copy the Project URL and public `anon`/publishable key. Add them to GitHub repository **Settings → Secrets and variables → Actions → Variables** as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then rerun the Pages deploy workflow. These values are intended for browser use; never use the `service_role` key or payment secrets in frontend code.
+6. Open the deployed site, click **Admin**, and sign in with the owner account. Product/category edits, contact settings and uploaded logo/banner/product/category media are shared with visitors.
+
+For local development, copy `.env.example` to `.env.local`, enter the URL and public anon key, then run `pnpm install` and `pnpm dev`; open `http://localhost:5173/#manage`. Never put passwords in `.env.local` or commit it.
 
 1. **Logo:** your supplied `Logo.png` has been copied to `public/images/shilpon-logo.png` and is in use. Replace that file (or change `logoPath` in `src/config/siteConfig.js`) to update it. Keep the image path rooted under `public/`.
 2. **Banner:** replace `public/images/shilpon-banner.svg` with your banner image and update `bannerPath` in `src/config/siteConfig.js`. The current Shilpon apparel artwork includes a small logo mark; use your own campaign banner before publishing if preferred.
@@ -86,11 +96,11 @@ The production site is generated in `dist/`. Upload the **contents** of `dist/` 
 
 The included GitHub Actions workflow builds the site and deploys it automatically whenever you push to the `main` branch. Create a GitHub repository, upload/push this project to `main`, then open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**. After the workflow succeeds, the site address is `https://YOUR-USERNAME.github.io/REPOSITORY-NAME/` (or `https://YOUR-USERNAME.github.io/` for a user-site repository). On GitHub Free, Pages is available for public repositories; a public repo makes the source files visible to everyone. The production build excludes the local Store Manager and PIN. For private source on Pages, GitHub requires a plan that supports Pages from private repositories.
 
-Products and photos added through the browser admin panel are saved only in that browser's IndexedDB. They are not included in a GitHub deployment and will not sync to the live website or other devices. To publish catalog changes using GitHub Pages, edit `src/data/products.js` and add image files under `public/`, then push the updated project. A shared live admin panel needs a backend and online database/media storage.
+Without Supabase configuration, the sample catalog is used. The browser-only PIN editor is not exposed in production. With Supabase connected, the catalog updates live; product detail SEO pages and `sitemap.xml` remain generated at build time, so newly added products appear in the shop immediately but need a new deployment for pre-rendered SEO pages on static GitHub Pages.
 
 ## Backend and payment integration
 
-The storefront, search, category filters, cart persistence and demo UI are frontend-only. Product and photo edits are stored only in IndexedDB on the current browser/device, with a 1 GiB application cap; browser quota can be lower, and the data does not sync to customers or other devices. `src/services/orderService.js` is the order API boundary. Replace its demo response with a `POST /api/orders` call, validate all input and pricing on the server, check stock, store the order, and return a server-generated order reference. Shared online product/photo storage needs a secure backend and object storage.
+The storefront and cart UI run in the browser. Supabase supplies shared catalog/auth/media through `src/services/catalogService.js`. `src/services/orderService.js` remains the order API boundary: replace its demo response with a secure `POST /api/orders` endpoint, validate input and prices on the server, check stock, store the order, and return a server-generated order reference.
 
 `src/services/paymentService.js` documents the bKash boundary. A secure backend must create checkout sessions using server-held credentials, receive provider callbacks, verify payment status server-to-server, and only then mark an order paid. Do not put bKash secrets in Vite variables or frontend files. Checkout currently rejects bKash confirmation and tells the customer it is not active.
 
@@ -108,3 +118,4 @@ After deployment, verify the domain in [Google Search Console](https://search.go
 - Use your own appropriately licensed product photography; product/category demo photos are hosted on Unsplash.
 - Add real social profile URLs and contact details in `src/config/siteConfig.js`.
 - Configure a backend order service, delivery workflow, privacy notice and secure payment flow before taking real payments or treating demo orders as confirmed.
+

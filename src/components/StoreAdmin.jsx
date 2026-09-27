@@ -4,6 +4,8 @@ import { useStore } from '../context/StoreContext'
 import { imageFileToDataUrl, optimizeImageDataUrl } from '../utils/imageUpload'
 import { siteConfig } from '../config/siteConfig'
 import { adminPin } from '../config/adminConfig'
+import { supabaseReady } from '../lib/supabaseClient'
+import { uploadStoreMedia } from '../services/catalogService'
 
 const blankProduct = () => ({ id: `SH-${Date.now().toString().slice(-5)}`, name: '', bn: '', category: 'women', images: [], videos: [], price: '', salePrice: '', description: '', bnDescription: '', specifications: { Material: '', Fit: '', Care: '' }, sizes: [], colors: [], stock: 1, rating: 5, reviews: 0, featured: false, isNew: true })
 const commas = value => value.split(',').map(x => x.trim()).filter(Boolean)
@@ -16,28 +18,29 @@ function StoreAdminPanel({ onExit, onLock }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [storeSettings, setStoreSettings] = useState(settings)
+  const useSharedAdmin = supabaseReady
   const editing = Boolean(editingId)
   const totalStock = useMemo(() => products.reduce((sum,p)=>sum+Number(p.stock||0),0),[products])
   const update = (key, value) => setForm(current => ({ ...current, [key]: value }))
   const editProduct = product => { setEditingId(product.id); setForm({ ...product, images: [...product.images], sizes: [...(product.sizes||[])], colors: [...(product.colors||[])] }); setNotice(''); setError(''); document.getElementById('manage-product-form')?.scrollIntoView({ behavior: 'smooth' }) }
   const newProduct = () => { setEditingId(null); setForm(blankProduct()); setNotice(''); setError(''); document.getElementById('manage-product-form')?.scrollIntoView({ behavior: 'smooth' }) }
-  const uploadImages = async files => { setBusy(true); setError(''); try { const nextImages=[]; const nextVideos=[]; for(const file of [...files]) { if(file.type.startsWith('video/')) { if(file.size>700*1024) throw new Error('For this browser-only editor, choose a short video smaller than 700 KB.'); nextVideos.push(await readAsDataUrl(file)) } else nextImages.push(await imageFileToDataUrl(file)) } update('images',[...form.images,...nextImages]); update('videos',[...(form.videos||[]),...nextVideos]) } catch(e) { setError(e.message || 'Could not read the file. Try a smaller one.') } finally { setBusy(false) } }
+  const uploadImages = async files => { setBusy(true); setError(''); try { const nextImages=[]; const nextVideos=[]; for(const file of [...files]) { if(useSharedAdmin) { const url=await uploadStoreMedia(file, 'products'); if(file.type.startsWith('video/')) nextVideos.push(url); else nextImages.push(url) } else if(file.type.startsWith('video/')) { if(file.size>700*1024) throw new Error('For this browser-only editor, choose a short video smaller than 700 KB.'); nextVideos.push(await readAsDataUrl(file)) } else nextImages.push(await imageFileToDataUrl(file)) } update('images',[...form.images,...nextImages]); update('videos',[...(form.videos||[]),...nextVideos]) } catch(e) { setError(e.message || 'Could not upload the file. Check your connection and try again.') } finally { setBusy(false) } }
   const submit = async event => {
     event.preventDefault(); setError(''); setNotice('')
     if(!form.name.trim() || !form.price || !form.images.length){setError('Add a product name, price and at least one product photo.');return}
     setBusy(true)
     try {
-      const compactImages = await Promise.all(form.images.map(image => optimizeImageDataUrl(image)))
-      const compactProducts = await Promise.all(products.map(async item => ({...item, images: await Promise.all((item.images||[]).map(image => optimizeImageDataUrl(image)))})))
+      const compactImages = useSharedAdmin ? form.images : await Promise.all(form.images.map(image => optimizeImageDataUrl(image)))
+      const compactProducts = useSharedAdmin ? products : await Promise.all(products.map(async item => ({...item, images: await Promise.all((item.images||[]).map(image => optimizeImageDataUrl(image)))})))
       const product={...form,images:compactImages,price:Number(form.price),salePrice:form.salePrice?Number(form.salePrice):null,stock:Number(form.stock)||0,sizes:Array.isArray(form.sizes)?form.sizes:commas(form.sizes),colors:Array.isArray(form.colors)?form.colors:commas(form.colors),featured:Boolean(form.featured),isNew:Boolean(form.isNew)}
       const next=editing?compactProducts.map(item=>item.id===editingId?product:item):[product,...compactProducts]
-      await saveProducts(next); setEditingId(product.id); setForm(product); setNotice('Saved in this browser. Optimized photos are stored in IndexedDB (up to 1 GB).')
+      await saveProducts(next); setEditingId(product.id); setForm(product); setNotice(useSharedAdmin ? 'Product saved to the shared online store.' : 'Saved in this browser. Optimized photos are stored in IndexedDB (up to 1 GB).')
     } catch(e) { setError(e.message || 'Could not save this product. Try smaller photos.') }
     finally { setBusy(false) }
   }
   const remove = async product => { if(!window.confirm(`Remove “${product.name}” from this browser's shop?`))return; try{await saveProducts(products.filter(p=>p.id!==product.id));if(editingId===product.id)newProduct();setNotice('Product removed from this browser.')}catch(e){setError(e.message||'Could not update browser storage.')} }
-  const saveImage = async (key,file,maxSide) => { if(!file)return;setBusy(true);setError('');try{await saveAsset(key,await imageFileToDataUrl(file,maxSide));setNotice('Image saved in this browser.')}catch(e){setError(e.message||'Could not save this image.')}finally{setBusy(false)} }
-  const saveCategoryImage = async (id,file) => { if(!file)return;setBusy(true);setError('');try{const image=await imageFileToDataUrl(file);await saveCategories(categories.map(c=>c.id===id?{...c,image}:c));setNotice('Category photo saved in this browser.')}catch(e){setError(e.message||'Could not save this image.')}finally{setBusy(false)} }
+  const saveImage = async (key,file,maxSide) => { if(!file)return;setBusy(true);setError('');try{const image=useSharedAdmin?await uploadStoreMedia(file,key):await imageFileToDataUrl(file,maxSide);await saveAsset(key,image);setNotice(useSharedAdmin?'Image uploaded to the shared online store.':'Image saved in this browser.')}catch(e){setError(e.message||'Could not save this image.')}finally{setBusy(false)} }
+  const saveCategoryImage = async (id,file) => { if(!file)return;setBusy(true);setError('');try{const image=useSharedAdmin?await uploadStoreMedia(file,'categories'):await imageFileToDataUrl(file);await saveCategories(categories.map(c=>c.id===id?{...c,image}:c));setNotice(useSharedAdmin?'Category photo uploaded online.':'Category photo saved in this browser.')}catch(e){setError(e.message||'Could not save this image.')}finally{setBusy(false)} }
   const reset = async () => { if(!window.confirm('Restore the original sample products, categories, logo and banner on this browser?'))return;try{await resetShop();setStoreSettings({whatsappNumber:siteConfig.whatsappNumber,phone:siteConfig.phone,email:siteConfig.email,address:siteConfig.address});setForm(blankProduct());setEditingId(null);setNotice('Original sample content restored.')}catch(e){setError(e.message||'Could not reset this browser.')} }
   const saveContactSettings = async event => {event.preventDefault();try{if(!/^\d{10,15}$/.test(storeSettings.whatsappNumber.replace(/\D/g,'')))throw new Error('Enter WhatsApp with country code, e.g. 8801727227189.');await saveSettings(storeSettings);setNotice('Contact details saved in this browser.')}catch(e){setError(e.message||'Could not save contact details.')}}
   const imageSrc = value => value?.startsWith('data:') ? value : value || ''
@@ -49,6 +52,8 @@ function AssetUploader({title,path,onPick,busy}) {
 }
 
 export function StoreAdmin({ onExit }) {
+  if (!supabaseReady) return <main className="admin-gate wrap"><section><span className="admin-gate-icon"><LockKeyhole/></span><span className="eyebrow">SHILPON · SECURE STORE MANAGER</span><h1>Online admin needs setup.</h1><p>The previous editor saved only in one browser. This live admin now requires a Supabase project so products and photos can be shared securely with every visitor.</p><p>Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in the hosting build settings, run <code>supabase/schema.sql</code> in that project, then create the owner account there. Never reuse a password posted in chat.</p><button className="button button-dark" onClick={onExit}>Back to website</button></section></main>
+  return <SecureStoreAdmin onExit={onExit}/>
   const [unlocked,setUnlocked]=useState(()=>sessionStorage.getItem('shilpon-admin-session')==='open')
   const [pin,setPin]=useState('')
   const [error,setError]=useState('')
@@ -58,4 +63,34 @@ export function StoreAdmin({ onExit }) {
   return <StoreAdminPanel onExit={onExit} onLock={lock}/>
 }
 
+function SecureStoreAdmin({ onExit }) {
+  const [session, setSession] = useState(null)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    let live = true
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!live) return
+      if (sessionError) setError(sessionError.message)
+      setSession(data?.session || null)
+      setLoading(false)
+    })
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
+    return () => { live = false; listener.subscription.unsubscribe() }
+  }, [])
+  const signIn = async event => {
+    event.preventDefault(); setLoading(true); setError('')
+    const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    setPassword(''); setLoading(false)
+    if (authError) setError(authError.message)
+  }
+  const signOut = async () => { await supabase.auth.signOut(); onExit() }
+  if (loading) return <main className="admin-gate wrap"><p role="status">Checking secure admin session…</p></main>
+  if (!session) return <main className="admin-gate wrap"><form onSubmit={signIn}><span className="admin-gate-icon"><LockKeyhole/></span><span className="eyebrow">SHILPON · SECURE STORE MANAGER</span><h1>Admin sign in.</h1><p>Use the owner email and password created in Supabase Auth. Access is limited by the server-side admin allowlist.</p>{error&&<div role="alert" className="manage-error">{error}</div>}<label>Admin email<input autoComplete="username" type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Password<input autoComplete="current-password" type="password" required value={password} onChange={e=>setPassword(e.target.value)}/></label><button className="button button-dark">Sign in</button><button type="button" className="admin-back-link" onClick={onExit}>Back to website</button></form></main>
+  return <StoreAdminPanel onExit={onExit} onLock={signOut}/>
+}
+
 function readAsDataUrl(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Could not read this video file.'));reader.readAsDataURL(file)})}
+
