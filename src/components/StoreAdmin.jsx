@@ -4,7 +4,7 @@ import { useStore } from '../context/StoreContext'
 import { imageFileToDataUrl, optimizeImageDataUrl } from '../utils/imageUpload'
 import { siteConfig } from '../config/siteConfig'
 import { adminPin } from '../config/adminConfig'
-import { supabaseReady } from '../lib/supabaseClient'
+import { supabase, supabaseReady } from '../lib/supabaseClient'
 import { uploadStoreMedia } from '../services/catalogService'
 
 const blankProduct = () => ({ id: `SH-${Date.now().toString().slice(-5)}`, name: '', bn: '', category: 'women', images: [], videos: [], price: '', salePrice: '', description: '', bnDescription: '', specifications: { Material: '', Fit: '', Care: '' }, sizes: [], colors: [], stock: 1, rating: 5, reviews: 0, featured: false, isNew: true })
