@@ -57,6 +57,17 @@ create policy "Listed admins delete store assets" on storage.objects
     bucket_id = 'store-assets' and exists (select 1 from public.store_admins a where a.user_id = (select auth.uid()))
   );
 
+-- Keep already-open storefront tabs in sync after an admin edits the catalog.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'store_catalog'
+  ) then
+    alter publication supabase_realtime add table public.store_catalog;
+  end if;
+end $$;
+
 -- After creating the owner in Supabase Auth, authorize only that account:
 -- insert into public.store_admins (user_id)
 -- select id from auth.users where email = 'YOUR_ADMIN_EMAIL';
