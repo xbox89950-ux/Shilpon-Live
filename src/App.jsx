@@ -13,14 +13,14 @@ import { testimonials } from './data/testimonials'
 import { siteConfig } from './config/siteConfig'
 import { currentPrice, money } from './utils/format'
 import { openWhatsAppOrder } from './utils/whatsapp'
-import { productFromLocation, productPath } from './utils/productSeo'
+import { categoryFromLocation, categoryPath, productFromLocation, productPath } from './utils/productSeo'
 
 function AppContent() {
   const store = useStore()
   const { products, categories, assets, settings } = store
-  const [hash, setHash] = useState(window.location.hash.replace('#','') || 'home')
+  const [hash, setHash] = useState(categoryFromLocation(store.categories) ? 'category' : window.location.hash.replace('#','') || 'home')
   const [searchTerm, setSearchTerm] = useState('')
-  const [category, setCategory] = useState('all')
+  const [category, setCategory] = useState(() => categoryFromLocation(store.categories) || 'all')
   const [sort, setSort] = useState('featured')
   const [cartOpen, setCartOpen] = useState(false)
   const [selected, setSelected] = useState(() => productFromLocation(products))
@@ -36,6 +36,13 @@ function AppContent() {
   useEffect(() => {
     const syncProductRoute = () => {
       const match = productFromLocation(products)
+      const categoryId = categoryFromLocation(categories)
+      if (categoryId) {
+        setSelected(null)
+        setCategory(categoryId)
+        setHash('category')
+        return
+      }
       if (!match && !window.location.pathname.includes('/products/')) return
       if (match) {
         setSelected(match)
@@ -49,9 +56,9 @@ function AppContent() {
     syncProductRoute()
     window.addEventListener('popstate', syncProductRoute)
     return () => window.removeEventListener('popstate', syncProductRoute)
-  }, [products])
+  }, [products, categories])
   const page = (name) => { const url=new URL(window.location.href); if(name!=='product'){url.pathname=import.meta.env.BASE_URL;url.search=''} url.hash=name; window.history.pushState({},'',url); setHash(name); window.scrollTo({ top: 0, behavior: 'smooth' }) }
-  const syncRoute = () => { const match=productFromLocation(products); setSelected(match); setHash(match?'product':window.location.hash.replace('#','')||'home'); setCheckout(false); setSuccess(null) }
+  const syncRoute = () => { const match=productFromLocation(products); const categoryId=categoryFromLocation(categories); setSelected(match); if(categoryId)setCategory(categoryId); setHash(match?'product':categoryId?'category':window.location.hash.replace('#','')||'home'); setCheckout(false); setSuccess(null) }
   window.onhashchange = syncRoute
   window.onpopstate = syncRoute
   const filteredProducts = useMemo(() => {
@@ -86,23 +93,24 @@ function AppContent() {
   useEffect(()=>{
     const product=activeProduct&&(hash==='product'||selected)?activeProduct:null
     const categoryPage=categories.find(item=>item.id===category)
-    const title=product?`${product.name} | Shilpon Clothing`:categoryPage&&hash==='shop'?`${categoryPage.name} Clothing | Shilpon`:hash==='shop'?'Shop Clothes for Men, Women & Kids | Shilpon':hash==='about'?'About Shilpon | Clothing in Dinajpur':hash==='faq'?'FAQs | Shilpon Clothing':hash==='returns'?'Returns & Exchanges | Shilpon':hash==='privacy'?'Privacy Policy | Shilpon':hash==='terms'?'Terms & Conditions | Shilpon':'Shilpon | Men’s, Women’s & Kids’ Clothing in Bangladesh'
-    const description=product?`${product.description} ${product.stock>0?'Available to order':'Currently out of stock'}. Price ${currentPrice(product)} BDT. Delivery across Bangladesh.`:categoryPage&&hash==='shop'?`Shop ${categoryPage.name.toLowerCase()} clothing from Shilpon, based in Dinajpur. Delivery across Bangladesh.`:'Shop clothing for men, women, boys and girls at Shilpon. Everyday styles delivered across Bangladesh from Dinajpur.'
+    const title=product?`${product.name} | Shilpon Clothing`:categoryPage&&(hash==='shop'||hash==='category')?`${categoryPage.name} Clothing | Shilpon`:hash==='shop'?'Shop Clothes for Men, Women & Kids | Shilpon':hash==='about'?'About Shilpon | Clothing in Dinajpur':hash==='faq'?'FAQs | Shilpon Clothing':hash==='returns'?'Returns & Exchanges | Shilpon':hash==='privacy'?'Privacy Policy | Shilpon':hash==='terms'?'Terms & Conditions | Shilpon':'Shilpon | Men’s, Women’s & Kids’ Clothing in Bangladesh'
+    const description=product?`${product.description} ${product.stock>0?'Available to order':'Currently out of stock'}. Price ${currentPrice(product)} BDT. Delivery across Bangladesh.`:categoryPage&&(hash==='shop'||hash==='category')?`Shop ${categoryPage.name.toLowerCase()} clothing from Shilpon, based in Dinajpur. Delivery across Bangladesh.`:'Shop clothing for men, women, boys and girls at Shilpon. Everyday styles delivered across Bangladesh from Dinajpur.'
     document.title=title
     const setMeta=(selector,attribute,value)=>{let element=document.head.querySelector(selector);if(!element){element=document.createElement('meta');element.setAttribute(attribute,value.key);document.head.appendChild(element)}element.setAttribute(attribute,value.content)}
     setMeta('meta[name="description"]','name',{key:'description',content:description})
     setMeta('meta[property="og:title"]','property',{key:'og:title',content:title})
     setMeta('meta[property="og:description"]','property',{key:'og:description',content:description})
     setMeta('meta[property="og:type"]','property',{key:'og:type',content:product?'product':'website'})
-    const canonical=product?new URL(productPath(product,import.meta.env.BASE_URL),window.location.origin):new URL(import.meta.env.BASE_URL,window.location.origin)
+    const canonical=product?new URL(productPath(product,import.meta.env.BASE_URL),window.location.origin):categoryPage&&(hash==='shop'||hash==='category')?new URL(categoryPath(categoryPage.id,import.meta.env.BASE_URL),window.location.origin):new URL(import.meta.env.BASE_URL,window.location.origin)
     const shareImage=product?.images?.find(image=>/^https?:/.test(image))||new URL(assets.logo||siteConfig.logoPath,window.location.origin).href
     setMeta('meta[property="og:image"]','property',{key:'og:image',content:shareImage})
     setMeta('meta[property="og:url"]','property',{key:'og:url',content:canonical.href})
     let canonicalLink=document.head.querySelector('link[rel="canonical"]');if(!canonicalLink){canonicalLink=document.createElement('link');canonicalLink.rel='canonical';document.head.appendChild(canonicalLink)}canonicalLink.href=canonical.href
     const graph=[{'@type':'ClothingStore',name:siteConfig.brandName,url:new URL(import.meta.env.BASE_URL,window.location.origin).href,logo:new URL(assets.logo||siteConfig.logoPath,window.location.origin).href,telephone:settings.phone,address:{'@type':'PostalAddress',addressLocality:'Dinajpur',addressRegion:'Rangpur',addressCountry:'BD'},areaServed:'Bangladesh'}]
     if(product)graph.push({'@type':'Product',name:product.name,description:product.description,sku:product.id,category:product.category,image:product.images.filter(image=>/^https?:/.test(image)),brand:{'@type':'Brand',name:siteConfig.brandName},offers:{'@type':'Offer',priceCurrency:'BDT',price:currentPrice(product),availability:product.stock>0?'https://schema.org/InStock':'https://schema.org/OutOfStock',url:canonical.href}})
+    if(!product&&categoryPage&&(hash==='shop'||hash==='category')){const items=products.filter(item=>item.category===categoryPage.id&&item.featured&&Number(item.stock)>0);graph.push({'@type':'CollectionPage',name:title,description, url:canonical.href,mainEntity:{'@type':'ItemList',itemListElement:items.map((item,index)=>({'@type':'ListItem',position:index+1,url:new URL(productPath(item,import.meta.env.BASE_URL),window.location.origin).href,name:item.name}))}})}
     let schema=document.getElementById('shilpon-seo-schema');if(!schema){schema=document.createElement('script');schema.id='shilpon-seo-schema';schema.type='application/ld+json';document.head.appendChild(schema)}schema.textContent=JSON.stringify({'@context':'https://schema.org','@graph':graph})
-  },[activeProduct,assets.logo,categories,category,hash,selected,settings.phone])
+  },[activeProduct,assets.logo,categories,category,hash,products,selected,settings.phone])
   return <><Header onSearch={setSearchTerm} onOpenCart={()=>setCartOpen(true)} onCategory={id=>{setCategory(id);page('shop')}}/>{hash==='manage' ? <StoreAdmin onExit={()=>page('home')}/> : checkout ? success ? <main className="success-page wrap"><div className="success-icon"><Check size={34}/></div><span className="eyebrow">THANK YOU FOR CHOOSING SHILPON</span><h1>Your order is <em>noted.</em></h1><p>Demo reference <b>{success.id}</b> · total {money(success.total)}.</p><div className="demo-banner"><ShieldCheck size={20}/><span>This front-end demo has not saved your order to a business system. Connect the secure order backend before accepting real orders.</span></div><a className="button button-dark" href="#shop" onClick={()=>{setCheckout(false);setSuccess(null);page('home')}}>Back to the shop <ArrowRight size={17}/></a></main> : <CheckoutForm onBack={()=>{setCheckout(false);setCartOpen(true)}} onSuccess={setSuccess}/> : activeProduct && (hash==='product'||selected) ? <ProductDetail product={activeProduct} products={products} onClose={closeProduct} onBuy={buyNow} onAdd={(p,q,v)=>{store.addToCart(p,q,v);setSelected(null);setCartOpen(true)}} variant={variant} setVariant={setVariant} quantity={quantity} setQuantity={setQuantity} onWhatsapp={whatsappOne} onSelect={showProduct}/> : isHome ? home : hash==='shop'||hash==='category' ? shop : hash==='contact' ? <InfoPage type="about"/> : <InfoPage type={['about','faq','returns','privacy','terms','shipping'].includes(hash) ? hash : 'about'}/>}<Footer/><WhatsAppButton/>{hash!=='manage'&&<a href="#manage" className="edge-admin-tab" aria-label="Open admin panel">Admin</a>}<CartDrawer open={cartOpen} onClose={()=>setCartOpen(false)} onCheckout={startCheckout}/></>
 }
 
@@ -113,4 +121,5 @@ function ProductDetail({ product, products, onClose, onBuy, onAdd, variant, setV
 }
 
 export default function App() { return <StoreProvider><AppContent/></StoreProvider> }
+
 
