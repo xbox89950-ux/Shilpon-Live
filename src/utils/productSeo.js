@@ -1,12 +1,14 @@
 // Shared product URL rules used by the storefront and the prerendering script.
 export function productSlug(product) {
-  const name = (product.name || 'item')
+  const slugPart = value => String(value || '')
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-  return `${name || 'item'}-${String(product.id || '').toLowerCase()}`
+  const name = slugPart(product.name) || 'item'
+  const id = slugPart(product.id) || 'item'
+  return `${name}-${id}`
 }
 
 export function productPath(product, base = '/') {
