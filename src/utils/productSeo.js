@@ -15,6 +15,18 @@ export function productPath(product, base = '/') {
   return `${base}products/${productSlug(product)}/`
 }
 
+export function categoryPath(category, base = '/') {
+  return `${base}categories/${encodeURIComponent(String(category || '').toLowerCase())}/`
+}
+
+export function categoryFromLocation(categories, location = window.location) {
+  const match = location.pathname.match(/\/categories\/([^/]+)\/?$/)
+  if (!match) return null
+  let id
+  try { id = decodeURIComponent(match[1]) } catch { return null }
+  return categories.find(category => category.id === id)?.id || null
+}
+
 export function productFromLocation(products, location = window.location) {
   const id = new URLSearchParams(location.search).get('product')
   if (id) return products.find(product => product.id === id) || null
@@ -23,3 +35,4 @@ export function productFromLocation(products, location = window.location) {
   if (!match) return null
   return products.find(product => productSlug(product) === decodeURIComponent(match[1])) || null
 }
+
