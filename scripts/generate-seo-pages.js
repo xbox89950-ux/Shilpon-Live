@@ -99,14 +99,10 @@ if (homepageProduct) {
   homepageHtml = homepageHtml.replace('</head>', `${altTag}\n  </head>`)
   const storeSchema = {
     '@context': 'https://schema.org',
-    '@type': 'ClothingStore',
-    name: 'Shilpon',
-    url: absolute(basePath),
-    logo: absolute(`${basePath}images/shilpon-logo.png`),
-    image: homepageImage,
-    telephone: '+880 1717-802606',
-    address: { '@type': 'PostalAddress', addressLocality: 'Dinajpur', addressRegion: 'Rangpur', addressCountry: 'BD' },
-    areaServed: 'Bangladesh',
+    '@graph': [
+      { '@type': 'ClothingStore', name: 'Shilpon', url: absolute(basePath), logo: absolute(`${basePath}images/shilpon-logo.png`), image: homepageImage, telephone: '+880 1717-802606', address: { '@type': 'PostalAddress', addressLocality: 'Dinajpur', addressRegion: 'Rangpur', addressCountry: 'BD' }, areaServed: 'Bangladesh' },
+      { '@type': 'WebPage', name: 'Shilpon | Clothing for Men, Women & Kids in Bangladesh', url: absolute(basePath), primaryImageOfPage: homepageImage },
+    ],
   }
   const homeSchemaTag = `<script id="shilpon-seo-schema" type="application/ld+json">${JSON.stringify(storeSchema).replaceAll('<', '\\u003c')}</script>`
   const schemaPattern = /<script id="shilpon-seo-schema" type="application\/ld\+json">.*?<\/script>/
