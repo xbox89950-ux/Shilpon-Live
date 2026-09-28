@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { products as sampleProducts } from '../src/data/products.js'
 import { categories } from '../src/data/categories.js'
-import { productPath, productSlug } from '../src/utils/productSeo.js'
+import { categoryPath, productPath, productSlug } from '../src/utils/productSeo.js'
 
 const [owner, repository] = (process.env.GITHUB_REPOSITORY || 'xbox89950-ux/Shilpon-Live').split('/')
 const siteUrl = new URL(process.env.SITE_URL || `https://${owner}.github.io/${repository === `${owner}.github.io` ? '' : `${repository}/`}`)
@@ -165,6 +165,60 @@ for (const product of products) {
   sitemapUrls.push({ url: canonical, lastmod: product._updatedAt })
 }
 
+// Only publish category landing pages for categories with promoted products that are in stock.
+// These pages expose truthful collection metadata and links based on the current catalog.
+const promotedProducts = products.filter(product => product.featured && Number(product.stock) > 0)
+for (const category of categories) {
+  const items = promotedProducts.filter(product => product.category === category.id)
+  if (!items.length) continue
+
+  const path = categoryPath(category.id, basePath)
+  const canonical = absolute(path)
+  const title = `Popular ${category.name} Clothes | Shilpon Bangladesh`
+  const description = `Browse ${items.length} featured ${category.name.toLowerCase()} clothing ${items.length === 1 ? 'item' : 'items'} at Shilpon. See current product details, prices and availability. Delivery across Bangladesh from Dinajpur.`
+  const heroImage = imageUrls(items[0])[0] || absolute(`${basePath}images/shilpon-logo.png`)
+  const schema = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'ClothingStore', name: 'Shilpon', url: absolute(basePath), logo: absolute(`${basePath}images/shilpon-logo.png`), telephone: '+880 1717-802606', address: { '@type': 'PostalAddress', addressLocality: 'Dinajpur', addressRegion: 'Rangpur', addressCountry: 'BD' }, areaServed: 'Bangladesh' },
+      { '@type': 'BreadcrumbList', itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: absolute(basePath) },
+        { '@type': 'ListItem', position: 2, name: `${category.name} clothing`, item: canonical },
+      ] },
+      { '@type': 'CollectionPage', name: title, description, url: canonical, mainEntity: { '@type': 'ItemList', itemListElement: items.map((product, index) => ({ '@type': 'ListItem', position: index + 1, url: absolute(productPath(product, basePath)), name: product.name })) } },
+    ],
+  }
+  const cards = items.map(product => {
+    const productUrl = absolute(productPath(product, basePath))
+    const image = imageUrls(product)[0] || heroImage
+    const price = currentPrice(product)
+    return `<li><a href="${esc(productUrl)}"><img src="${esc(image)}" alt="${esc(product.bn || product.name)}" loading="lazy"><h2>${esc(product.name)}</h2></a><p>${esc(String(product.description || product.bnDescription || '').replace(/\s+/g, ' ').trim())}</p><p>Price: ৳${price} BDT · In stock</p><a href="${esc(productUrl)}">View product details</a></li>`
+  }).join('\n')
+  let html = template
+  html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)
+  html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(description)}" />`)
+  html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${esc(title)}" />`)
+  html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${esc(description)}" />`)
+  html = html.replace(/<meta property="og:image" content="[^"]*"\s*\/>/, `<meta property="og:image" content="${esc(heroImage)}" />`)
+  html = html.replace(/<meta name="twitter:image" content="[^"]*"\s*\/>/, `<meta name="twitter:image" content="${esc(heroImage)}" />`)
+  html = html.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${esc(title)}" />`)
+  html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${esc(description)}" />`)
+  html = html.replace(/<meta property="og:url" content="[^"]*"\s*\/>/, `<meta property="og:url" content="${canonical}" />`)
+  html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, `<link rel="canonical" href="${canonical}" />`)
+  const schemaTag = `<script id="shilpon-seo-schema" type="application/ld+json">${JSON.stringify(schema).replaceAll('<', '\\u003c')}</script>`
+  const schemaPattern = /<script id="shilpon-seo-schema" type="application\/ld\+json">.*?<\/script>/
+  html = schemaPattern.test(html) ? html.replace(schemaPattern, schemaTag) : html.replace('</head>', `${schemaTag}\n  </head>`)
+  html = html.replaceAll('href="./', `href="${basePath}`).replaceAll('src="./', `src="${basePath}`)
+  const noScript = `<noscript><main><h1>${esc(title)}</h1><p>${esc(description)}</p><ul>${cards}</ul><a href="${absolute(basePath)}">Visit Shilpon</a></main></noscript>`
+  html = html.replace('</body>', `${noScript}\n</body>`)
+
+  const pageDir = join(dist, 'categories', category.id)
+  await mkdir(pageDir, { recursive: true })
+  await writeFile(join(pageDir, 'index.html'), html)
+  sitemapUrls.push({ url: canonical, lastmod: items.map(item => item._updatedAt).filter(Boolean).sort().at(-1) || null })
+}
+
 const xml = sitemapUrls.map(({ url, lastmod }) => `  <url><loc>${url.replaceAll('&', '&amp;')}</loc>${lastmod && Number.isFinite(Date.parse(lastmod)) ? `<lastmod>${new Date(lastmod).toISOString()}</lastmod>` : ''}</url>`).join('\n')
 await writeFile(join(dist, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${xml}\n</urlset>\n`)
 await writeFile(join(dist, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${absolute(`${basePath}sitemap.xml`)}\n`)
+
