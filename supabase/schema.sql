@@ -16,6 +16,11 @@ create table if not exists public.store_admins (
 alter table public.store_catalog enable row level security;
 alter table public.store_admins enable row level security;
 revoke all on public.store_admins from anon, authenticated;
+-- Allow policies to verify only the current user's admin row.
+grant select on public.store_admins to authenticated;
+drop policy if exists "Admins can read own allowlist entry" on public.store_admins;
+create policy "Admins can read own allowlist entry" on public.store_admins
+  for select to authenticated using (user_id = (select auth.uid()));
 grant select on public.store_catalog to anon, authenticated;
 grant insert, update, delete on public.store_catalog to authenticated;
 
