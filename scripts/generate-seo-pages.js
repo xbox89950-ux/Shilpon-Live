@@ -86,6 +86,35 @@ const products = await getProductsForSeo()
 const sitemapUrls = [{ url: absolute(basePath), lastmod: null }]
 const usedSlugs = new Set()
 
+// The first available item marked "Show in popular products" is the homepage preview photo.
+// The storefront logo remains the structured business logo; this is only the preferred page image.
+const homepageProduct = products.find(product => product.featured && Number(product.stock) > 0 && imageUrls(product).length)
+if (homepageProduct) {
+  const homepageImage = imageUrls(homepageProduct)[0]
+  const homepageHtmlPath = join(dist, 'index.html')
+  let homepageHtml = await readFile(homepageHtmlPath, 'utf8')
+  homepageHtml = homepageHtml.replace(/<meta property="og:image" content="[^"]*"\s*\/>/, `<meta property="og:image" content="${esc(homepageImage)}" />`)
+  homepageHtml = homepageHtml.replace(/<meta name="twitter:image" content="[^"]*"\s*\/>/, `<meta name="twitter:image" content="${esc(homepageImage)}" />`)
+  const altTag = `<meta property="og:image:alt" content="${esc(homepageProduct.bn || homepageProduct.name)} · Shilpon" />`
+  homepageHtml = homepageHtml.replace('</head>', `${altTag}\n  </head>`)
+  const storeSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'ClothingStore',
+    name: 'Shilpon',
+    url: absolute(basePath),
+    logo: absolute(`${basePath}images/shilpon-logo.png`),
+    image: homepageImage,
+    telephone: '+880 1717-802606',
+    address: { '@type': 'PostalAddress', addressLocality: 'Dinajpur', addressRegion: 'Rangpur', addressCountry: 'BD' },
+    areaServed: 'Bangladesh',
+  }
+  const homeSchemaTag = `<script id="shilpon-seo-schema" type="application/ld+json">${JSON.stringify(storeSchema).replaceAll('<', '\\u003c')}</script>`
+  const schemaPattern = /<script id="shilpon-seo-schema" type="application\/ld\+json">.*?<\/script>/
+  homepageHtml = schemaPattern.test(homepageHtml) ? homepageHtml.replace(schemaPattern, homeSchemaTag) : homepageHtml.replace('</head>', `${homeSchemaTag}\n  </head>`)
+  await writeFile(homepageHtmlPath, homepageHtml)
+  console.log(`Homepage preview image: ${homepageProduct.name} (${homepageProduct.id}).`)
+}
+
 for (const product of products) {
   const slug = productSlug(product)
   if (usedSlugs.has(slug)) throw new Error(`Duplicate product URL slug generated for product ID ${product.id}. Give each product a unique ID.`)
