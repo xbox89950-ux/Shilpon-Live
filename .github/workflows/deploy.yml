@@ -1,6 +1,9 @@
 name: Deploy Shilpon to GitHub Pages
 
 on:
+  # Refresh static product/category SEO pages and the sitemap from the live catalog.
+  schedule:
+    - cron: '17 */6 * * *'
   push:
     branches: [main]
   workflow_dispatch:
